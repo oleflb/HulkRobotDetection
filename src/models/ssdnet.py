@@ -46,7 +46,6 @@ class SSDNet(nn.Module):
         
         return ReparameterizedSSDNet(
             image_shape=image_shape,
-            transform=copy.deepcopy(self.ssd.transform),
             backbone=copy.deepcopy(self.ssd.backbone), 
             head=copy.deepcopy(self.ssd.head),
             anchor_generator=copy.deepcopy(self.ssd.anchor_generator),
@@ -78,7 +77,7 @@ class ReparameterizedBoxGenerator(nn.Module):
         return dboxes_in_image
 
 class ReparameterizedSSDNet(nn.Module):
-    def __init__(self, image_shape, transform, backbone, head, anchor_generator, box_coder):
+    def __init__(self, image_shape, backbone, head, anchor_generator, box_coder):
         super().__init__()
         self.backbone = backbone
         self.head = head
@@ -89,24 +88,8 @@ class ReparameterizedSSDNet(nn.Module):
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
         )
-        # self.transform = transform
 
     def forward(self, images):
-        # original_image_sizes: List[Tuple[int, int]] = []
-        # for img in images:
-        #     val = img.shape[-2:]
-        #     torch._assert(
-        #         len(val) == 2,
-        #         f"expecting the last two dimensions of the Tensor to be H and W instead got {img.shape[-2:]}",
-        #     )
-        #     original_image_sizes.append((val[0], val[1]))
-
-        # This needs to be avoided,
-        # as it makes the output graph dynamic
-        ##########################################
-        # images, _ = self.transform(images, None)
-        # images = images.tensors
-        ##########################################
         if not isinstance(images, torch.Tensor):
             images = torch.stack(images)
 
@@ -131,7 +114,4 @@ class ReparameterizedSSDNet(nn.Module):
                 "scores": scores,
             })
 
-        # detections = self.transform.postprocess(results, [self.image_shape for _ in range(batch_size)], original_image_sizes)
-        detections = results
-
-        return detections
+        return results
