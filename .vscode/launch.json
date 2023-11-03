@@ -1,0 +1,39 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Labeling",
+            "type": "python",
+            "request": "launch",
+            "module": "labeling.main",
+            "justMyCode": true,
+            "args": ["best.pt"]
+        },
+        {
+            "name": "Train",
+            "type": "python",
+            "request": "launch",
+            "module": "src.train.train",
+            "justMyCode": false
+        },
+        {
+            "name": "Show data",
+            "type": "python",
+            "request": "launch",
+            "module": "src.visualization.show_dataset",
+            "justMyCode": true,
+            "args": ["epoch=135-step=8160.ckpt", "best.pt"]
+        },
+        {
+            "name": "Export ONNX",
+            "type": "python",
+            "request": "launch",
+            "module": "src.train.export_onnx",
+            "justMyCode": true,
+            "args": ["epoch=799-step=48000.ckpt", "model.onnx"]
+        }
+    ]
+}

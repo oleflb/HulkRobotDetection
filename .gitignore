@@ -1,0 +1,12 @@
+.venv/
+lightning_logs/
+datasets/
+__pycache__/
+*.onnx
+*.pt
+*.ckpt
+*.zip
+
+# openvino models
+*-ov.bin
+*-ov.xml
