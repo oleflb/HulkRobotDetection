@@ -10,8 +10,15 @@ import copy
 from typing import Tuple, List
 import numpy as np
 
+
 class SSDNet(nn.Module):
-    def __init__(self, image_size: Tuple[int, int], num_classes: int, detections_per_img: int, backbone: str):
+    def __init__(
+        self,
+        image_size: Tuple[int, int],
+        num_classes: int,
+        detections_per_img: int,
+        backbone: str,
+    ):
         super().__init__()
 
         if backbone == "squeezenet":
@@ -25,32 +32,28 @@ class SSDNet(nn.Module):
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
 
-        anchor_generator = DefaultBoxGenerator(
-            aspect_ratios=((0.5, 1.0, 2.0),)
-        )
+        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),))
+        print(f"image_size is (h*w) {image_size}")
         self.ssd = SSD(
-            self.backbone, 
-            anchor_generator, 
-            image_size, 
-            num_classes, 
+            self.backbone,
+            anchor_generator,
+            image_size[::-1],  # the image size here has to be w * h
+            num_classes,
             detections_per_img=detections_per_img,
-            _skip_resize=True,
         )
 
     def forward(self, images, labels=None):
         return self.ssd(images, labels)
 
     def reparameterize(self, image_shape) -> nn.Module:
-        if not self.ssd.transform._skip_resize:
-            raise ValueError("set the _skip_resize option of the transform, otherwise we cannot reparameterize")
-        
         return ReparameterizedSSDNet(
             image_shape=image_shape,
-            backbone=copy.deepcopy(self.ssd.backbone), 
+            backbone=copy.deepcopy(self.ssd.backbone),
             head=copy.deepcopy(self.ssd.head),
             anchor_generator=copy.deepcopy(self.ssd.anchor_generator),
-            box_coder=copy.deepcopy(self.ssd.box_coder)
+            box_coder=copy.deepcopy(self.ssd.box_coder),
         )
+
 
 class ReparameterizedBoxGenerator(nn.Module):
     def __init__(self, image_shape, default_box_generator):
@@ -58,13 +61,17 @@ class ReparameterizedBoxGenerator(nn.Module):
         self.image_shape = image_shape
         self.box_generator = default_box_generator
 
-    def forward(self, feature_maps: List[torch.Tensor]) -> List[torch.Tensor]:
+    def forward(self, feature_maps: List[torch.Tensor]) -> torch.Tensor:
         grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
         dtype, device = feature_maps[0].dtype, feature_maps[0].device
-        default_boxes = self.box_generator._grid_default_boxes(grid_sizes, self.image_shape, dtype=dtype)
+        default_boxes = self.box_generator._grid_default_boxes(
+            grid_sizes, self.image_shape, dtype=dtype
+        )
         default_boxes = default_boxes.to(device)
 
-        x_y_size = torch.tensor([self.image_shape[1], self.image_shape[0]], device=default_boxes.device)
+        x_y_size = torch.tensor(
+            [self.image_shape[1], self.image_shape[0]], device=default_boxes.device
+        )
 
         dboxes_in_image = default_boxes
         dboxes_in_image = torch.cat(
@@ -76,24 +83,26 @@ class ReparameterizedBoxGenerator(nn.Module):
         )
         return dboxes_in_image
 
+
 class ReparameterizedSSDNet(nn.Module):
     def __init__(self, image_shape, backbone, head, anchor_generator, box_coder):
         super().__init__()
         self.backbone = backbone
         self.head = head
-        self.anchor_generator = ReparameterizedBoxGenerator(image_shape, anchor_generator)
+        self.anchor_generator = ReparameterizedBoxGenerator(
+            image_shape, anchor_generator
+        )
         self.box_coder = box_coder
         self.image_shape = image_shape
         self.normalize = torchvision.transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
 
     def forward(self, images):
         if not isinstance(images, torch.Tensor):
             images = torch.stack(images)
 
-        batch_size = len(images)
+        batch_size = images.shape[0]
         images = self.normalize(images)
         features = self.backbone(images)
         head_outputs = self.head([features])
@@ -102,7 +111,14 @@ class ReparameterizedSSDNet(nn.Module):
         pred_scores = F.softmax(head_outputs["cls_logits"], dim=-1)
 
         image_anchors = self.anchor_generator([features])
-
+        # bbox_regression = self.box_coder.decode(bbox_regression, image_anchors)
+        if batch_size == 1:
+            print(bbox_regression.shape)
+            boxes = self.box_coder.decode_single(bbox_regression[0], image_anchors)
+            boxes = box_ops.clip_boxes_to_image(boxes, self.image_shape)
+            return [{"boxes": boxes, "scores": pred_scores}]
+        
+        # return bbox_regression, pred_scores
         results = []
 
         for boxes, scores in zip(bbox_regression, pred_scores):
@@ -115,3 +131,17 @@ class ReparameterizedSSDNet(nn.Module):
             })
 
         return results
+    @staticmethod
+    def parse_output(self, bbox_regression, prediction_scores, conf_thresh=0.2):
+        detections = []
+        for bboxes, predictions in zip(bbox_regression, prediction_scores):
+            labels = torch.argmax(prediction, dim=-1)
+
+            selector = labels != 0 and predictions[labels] >= conf_thresh
+
+            detections.append({
+                "boxes": bboxes[selector],
+                "scores": predictions[labels][selector],
+                "labels": labels[selector],
+            })
+        return detections

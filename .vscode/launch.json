@@ -24,8 +24,8 @@
             "type": "python",
             "request": "launch",
             "module": "src.visualization.show_dataset",
-            "justMyCode": true,
-            "args": ["epoch=135-step=8160.ckpt", "best.pt"]
+            "justMyCode": false,
+            "args": ["--ckpt", "epoch=799-step=48000.ckpt", "--yolo", "best.pt"]
         },
         {
             "name": "Export ONNX",
@@ -34,6 +34,30 @@
             "module": "src.train.export_onnx",
             "justMyCode": true,
             "args": ["epoch=799-step=48000.ckpt", "model.onnx"]
+        },
+        {
+            "name": "Run ONNX",
+            "type": "python",
+            "request": "launch",
+            "module": "src.visualization.run_onnx",
+            "justMyCode": true,
+            "args": ["--model", "mobilenetv3_120_160_model.onnx"]
+        },
+        {
+            "name": "Run Openvino",
+            "type": "python",
+            "request": "launch",
+            "module": "src.visualization.run_openvino",
+            "justMyCode": true,
+            "args": ["--model", "mobilenetv3_120_160.xml", "--image", "datasets/sample_images/sample.png"]
+        },
+        {
+            "name": "Run",
+            "type": "python",
+            "request": "launch",
+            "module": "src.visualization.run",
+            "justMyCode": true,
+            "args": ["--model", "mobilenetv3_120_160.xml", "--runtime", "openvino", "--image", "datasets/sample_images/sample.png"]
         }
     ]
 }

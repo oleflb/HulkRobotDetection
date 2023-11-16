@@ -1,6 +1,7 @@
 from lightning import LightningModule
 import torch
 from torch import nn, optim
+
 # from torchmetrics.detection.mean_ap import MeanAveragePrecision
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
@@ -8,22 +9,43 @@ import torchvision.transforms as T
 from .ssdnet import SSDNet
 from ..visualization.draw_bbox import draw_bboxes_on_axis_from_prediction
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from torchmetrics.detection.iou import IntersectionOverUnion
 from torchvision.ops import nms
 
 from typing import Tuple
 
+
 class LightningWrapper(LightningModule):
-    def __init__(self, image_size: Tuple[int, int], num_classes: int, model: str, batch_size: int, iou_threshold: float, conf_threshold: float, detections_per_img: int):
+    def __init__(
+        self,
+        image_size: Tuple[int, int],
+        num_classes: int,
+        model: str,
+        batch_size: int,
+        iou_threshold: float,
+        conf_threshold: float,
+        detections_per_img: int,
+        learning_rate_reduction_factor: float,
+    ):
         super().__init__()
         self.model_variant = model
-        self.model = SSDNet(image_size, num_classes, backbone=model, detections_per_img=detections_per_img)
+        self.model = SSDNet(
+            image_size,
+            num_classes,
+            backbone=model,
+            detections_per_img=detections_per_img,
+        )
         self.map_metric = MeanAveragePrecision()
+        self.iou_metric = IntersectionOverUnion()
+
         self.batch_size = batch_size
         self.iou_threshold = iou_threshold
         self.conf_threshold = conf_threshold
         self.image_size = image_size
         self.num_classes = num_classes
         self.detections_per_img = detections_per_img
+        self.learning_rate_reduction_factor = learning_rate_reduction_factor
+
 
         self.save_hyperparameters()
 
@@ -31,31 +53,24 @@ class LightningWrapper(LightningModule):
         return self.model(images)
 
     def get_accuracy(self, predictions, labels):
-
         def filter_confidence(prediction, indices):
             return indices[prediction["scores"][indices] >= self.conf_threshold]
 
-        # For accuracy computation, perform NMS and filter out predictions with low confidence
         box_indices = [
-            filter_confidence(prediction, nms(prediction["boxes"], prediction["scores"], self.iou_threshold))
-            for prediction in predictions 
+            nms(prediction["boxes"], prediction["scores"], self.iou_threshold)
+            for prediction in predictions
         ]
-        # box_indices = [
-        #     nms(prediction["boxes"], prediction["scores"], self.iou_threshold)
-        #     for prediction in predictions
-        # ]
 
         nms_prediction = [
             {
                 "boxes": prediction["boxes"][box_indices],
                 "scores": prediction["scores"][box_indices],
-                "labels": prediction["labels"][box_indices]
+                "labels": prediction["labels"][box_indices],
             }
             for prediction, box_indices in zip(predictions, box_indices)
         ]
 
         return self.map_metric(nms_prediction, labels)
-
 
     def _step(self, images, labels):
         loss_dict = self.model(images, labels)
@@ -74,16 +89,26 @@ class LightningWrapper(LightningModule):
         predictions = self.forward(images)
 
         score = self.get_accuracy(predictions, labels)
-        
-        self.log("val/map", score["map"], sync_dist=True, batch_size=self.batch_size, prog_bar=True)
-        self.log("val/map50", score["map_50"], sync_dist=True, batch_size=self.batch_size)
-        self.log("val/map75", score["map_75"], sync_dist=True, batch_size=self.batch_size)
-        self.log("val/mar10", score["mar_10"], sync_dist=True, batch_size=self.batch_size)
-        self.log("val/mar100", score["mar_100"], sync_dist=True, batch_size=self.batch_size)
+        iou = self.iou_metric(predictions, labels)["iou"]
+
+        self.train(True)
+        loss = self._step(images, labels)
+        self.train(False)
+
+        self.log_dict({
+            "val/map": score["map"],
+            "val/map50": score["map_50"],
+            "val/map75": score["map_75"],
+            "val/mar10": score["mar_10"],
+            "val/mar100": score["mar_100"],
+            "val/iou": iou,
+            "val/loss": loss,
+        }, sync_dist=True, batch_size=self.batch_size)
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        optimizer = optim.AdamW(self.parameters(), lr=1e-1)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=10, min_lr=1e-5)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val/loss"}
 
     def forward(self, images):
         return self.model(images)
