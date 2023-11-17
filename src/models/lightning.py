@@ -106,8 +106,8 @@ class LightningWrapper(LightningModule):
         }, sync_dist=True, batch_size=self.batch_size)
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), lr=1e-1)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=10, min_lr=1e-5)
+        optimizer = optim.AdamW(self.parameters(), lr=5e-3)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=10, min_lr=1e-7)
         return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val/loss"}
 
     def forward(self, images):
