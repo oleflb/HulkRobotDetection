@@ -5,10 +5,29 @@ import torchvision
 import torchvision.models as models
 from torchvision.ops import boxes as box_ops
 from torchvision.models.detection.ssd import SSD, DefaultBoxGenerator
+from torchvision.models.detection.backbone_utils import BackboneWithFPN
 from .mobileone import mobileone
 import copy
 from typing import Tuple, List
 import numpy as np
+
+
+class FPNMobileNetBackbone(nn.Module):
+    def __init__(self, backbone: nn.Module, returned_layers: List[str] = None, out_channels = 256):
+        super().__init__()
+        stage_indices = [0] + [i for i, b in enumerate(backbone) if getattr(b, "_is_cn", False)] + [len(backbone) - 1]
+        num_stages = len(stage_indices)
+
+        if returned_layers is None:
+            returned_layers = [num_stages - 2, num_stages - 1]
+        
+        return_layers = {f'{stage_indices[k]}': str(v) for v, k in enumerate(returned_layers)}
+        in_channels_list = [backbone[stage_indices[i]].out_channels for i in returned_layers]
+
+        self.backbone = BackboneWithFPN(backbone, return_layers, in_channels_list, out_channels)
+
+    def forward(self, x):
+        return self.backbone(x)
 
 
 class SSDNet(nn.Module):
@@ -26,13 +45,13 @@ class SSDNet(nn.Module):
         elif backbone == "mobileone":
             self.backbone = mobileone(num_classes, variant="s0")
         elif backbone == "mobilenetv3":
-            self.backbone = models.mobilenet_v3_small(weights="DEFAULT").features
+            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features)
         elif backbone == "mobilenetv2":
             self.backbone = models.mobilenet_v2(weights="DEFAULT").features
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
 
-        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),))
+        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),(0.5, 1.0, 2.0),(0.5, 1.0, 2.0),))
         print(f"image_size is (h*w) {image_size}")
         self.ssd = SSD(
             self.backbone,
@@ -131,17 +150,17 @@ class ReparameterizedSSDNet(nn.Module):
             })
 
         return results
-    @staticmethod
-    def parse_output(self, bbox_regression, prediction_scores, conf_thresh=0.2):
+    @classmethod
+    def parse_output(cls, bbox_regression, prediction_scores, conf_thresh=0.2):
         detections = []
         for bboxes, predictions in zip(bbox_regression, prediction_scores):
-            labels = torch.argmax(prediction, dim=-1)
+            scores, labels = torch.max(predictions, dim=-1)
 
-            selector = labels != 0 and predictions[labels] >= conf_thresh
+            selector = (labels != 0) * (scores >= conf_thresh)
 
             detections.append({
                 "boxes": bboxes[selector],
-                "scores": predictions[labels][selector],
+                "scores": scores[selector],
                 "labels": labels[selector],
             })
         return detections
