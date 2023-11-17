@@ -1,5 +1,5 @@
 from lightning import Trainer
-from lightning.pytorch.callbacks import StochasticWeightAveraging, LearningRateMonitor
+from lightning.pytorch.callbacks import StochasticWeightAveraging, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.tuner import Tuner
 from ..models.ssdnet import SSDNet
 from ..models.lightning import LightningWrapper
@@ -22,7 +22,7 @@ def main():
         iou_threshold=0.5,
         conf_threshold=0.2,
         detections_per_img=50,
-        learning_rate_reduction_factor=0.5
+        learning_rate_reduction_factor=0.8
     )
 
     dataloader = DataModule(image_size, num_workers=28, batch_size=BATCH_SIZE)
@@ -30,6 +30,7 @@ def main():
     trainer = Trainer(
         max_epochs=800,
         callbacks=[
+            ModelCheckpoint(save_top_k=1, monitor="val/iou", mode="max"),
             StochasticWeightAveraging(swa_lrs=1e-2),
             LearningRateMonitor(logging_interval='step')
         ],
