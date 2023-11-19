@@ -11,9 +11,9 @@ class Augmenter:
 
         self.__transform = A.Compose(
             [
-                A.RandomGamma(p=0.5),
+                A.RandomGamma(p=0.2),
                 A.Rotate(limit=[-5, 5], p=0.2, crop_border=True),
-                A.CLAHE(),
+                A.CLAHE(p=0.2),
                 A.OneOf([
                     A.Resize(self.height, self.width, interpolation=0),
                     A.Resize(self.height, self.width, interpolation=1),
