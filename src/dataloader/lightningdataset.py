@@ -97,7 +97,7 @@ class DataModule(LightningDataModule):
             pin_memory=True,
             persistent_workers=True,
             collate_fn=self.collate_function,
-            drop_last=True,
+            drop_last=False,
         )
 
     def real_dataloader(self) -> EVAL_DATALOADERS:
