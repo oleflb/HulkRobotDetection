@@ -10,7 +10,7 @@ from .mobileone import mobileone
 import copy
 from typing import Tuple, List
 import numpy as np
-
+from collections import OrderedDict
 
 class FPNMobileNetBackbone(nn.Module):
     def __init__(self, backbone: nn.Module, returned_layers: List[str] = None, out_channels = 256):
@@ -45,9 +45,7 @@ class SSDNet(nn.Module):
         elif backbone == "mobileone":
             self.backbone = mobileone(num_classes, variant="s0")
         elif backbone == "mobilenetv3":
-            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features)
-        elif backbone == "mobilenetv2":
-            self.backbone = models.mobilenet_v2(weights="DEFAULT").features
+            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=64)
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
 
@@ -124,12 +122,18 @@ class ReparameterizedSSDNet(nn.Module):
         batch_size = images.shape[0]
         images = self.normalize(images)
         features = self.backbone(images)
-        head_outputs = self.head([features])
+        
+        if isinstance(features, torch.Tensor):
+            features = OrderedDict([("0", features)])
+
+        features = list(features.values())
+        
+        head_outputs = self.head(features)
 
         bbox_regression = head_outputs["bbox_regression"]
         pred_scores = F.softmax(head_outputs["cls_logits"], dim=-1)
 
-        image_anchors = self.anchor_generator([features])
+        image_anchors = self.anchor_generator(features)
         # bbox_regression = self.box_coder.decode(bbox_regression, image_anchors)
         if batch_size == 1:
             print(bbox_regression.shape)
@@ -152,10 +156,12 @@ class ReparameterizedSSDNet(nn.Module):
         return results
     @classmethod
     def parse_output(cls, bbox_regression, prediction_scores, conf_thresh=0.2):
+        assert bbox_regression.ndim == 3
+        assert prediction_scores.ndim == 3
+
         detections = []
         for bboxes, predictions in zip(bbox_regression, prediction_scores):
             scores, labels = torch.max(predictions, dim=-1)
-
             selector = (labels != 0) * (scores >= conf_thresh)
 
             detections.append({
