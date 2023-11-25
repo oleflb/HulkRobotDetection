@@ -26,6 +26,7 @@ class LightningWrapper(LightningModule):
         conf_threshold: float,
         detections_per_img: int,
         learning_rate_reduction_factor: float,
+        out_channels: int,
     ):
         super().__init__()
         self.model_variant = model
@@ -34,10 +35,12 @@ class LightningWrapper(LightningModule):
             num_classes,
             backbone=model,
             detections_per_img=detections_per_img,
+            out_channels=out_channels,
         )
         self.map_metric = MeanAveragePrecision()
         self.iou_metric = IntersectionOverUnion()
 
+        self.out_channels = out_channels
         self.batch_size = batch_size
         self.iou_threshold = iou_threshold
         self.conf_threshold = conf_threshold
@@ -106,8 +109,8 @@ class LightningWrapper(LightningModule):
         }, sync_dist=True, batch_size=self.batch_size)
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), lr=5e-3)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=10, min_lr=1e-7)
+        optimizer = optim.AdamW(self.parameters(), lr=6e-3)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=30, min_lr=1e-7)
         return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val/loss"}
 
     def forward(self, images):

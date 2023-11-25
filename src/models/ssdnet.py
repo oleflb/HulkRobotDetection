@@ -6,6 +6,7 @@ import torchvision.models as models
 from torchvision.ops import boxes as box_ops
 from torchvision.models.detection.ssd import SSD, DefaultBoxGenerator
 from torchvision.models.detection.backbone_utils import BackboneWithFPN
+from torchvision.models import efficientnet_v2_s
 from .mobileone import mobileone
 import copy
 from typing import Tuple, List
@@ -13,7 +14,7 @@ import numpy as np
 from collections import OrderedDict
 
 class FPNMobileNetBackbone(nn.Module):
-    def __init__(self, backbone: nn.Module, returned_layers: List[str] = None, out_channels = 256):
+    def __init__(self, backbone: nn.Module, returned_layers: List[str] = None, out_channels: int = 256):
         super().__init__()
         stage_indices = [0] + [i for i, b in enumerate(backbone) if getattr(b, "_is_cn", False)] + [len(backbone) - 1]
         num_stages = len(stage_indices)
@@ -36,20 +37,27 @@ class SSDNet(nn.Module):
         image_size: Tuple[int, int],
         num_classes: int,
         detections_per_img: int,
+        out_channels: int,
         backbone: str,
     ):
         super().__init__()
 
         if backbone == "squeezenet":
             self.backbone = models.squeezenet1_0().features
+            self.num_feature_maps = 1
         elif backbone == "mobileone":
             self.backbone = mobileone(num_classes, variant="s0")
+            self.num_feature_maps = 1
         elif backbone == "mobilenetv3":
-            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=64)
+            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=out_channels)
+            self.num_feature_maps = 3
+        elif backbone == "efficientnetv2":
+            self.backbone = efficientnet_v2_s(weights="DEFAULT").features
+            self.num_feature_maps = 1
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
 
-        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),(0.5, 1.0, 2.0),(0.5, 1.0, 2.0),))
+        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),) * self.num_feature_maps)
         print(f"image_size is (h*w) {image_size}")
         self.ssd = SSD(
             self.backbone,
