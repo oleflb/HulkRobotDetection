@@ -17,6 +17,7 @@ from PIL import Image
 from os import path
 import onnxruntime as ort
 from albumentations.pytorch.transforms import ToTensorV2
+from typing import Tuple
 
 class Model:
     def __init__(self, runnable_model):
@@ -24,7 +25,6 @@ class Model:
     
     @staticmethod
     def create(runtime: str, model_path: str, reparameterize=False):
-        print(reparameterize)
         model_extension = path.splitext(model_path)[1]
         if runtime == "ort":
             assert model_extension == ".onnx", "ort only supports onnx format"
@@ -50,24 +50,25 @@ class Model:
         raise ValueError(f"{runtime} is not a valid runtime")
     
     def infer(self, image):
-        print(type(self.model))
         if isinstance(self.model, nn.Module):
             boxes, scores = self.infer_torch(image)
         elif isinstance(self.model, ov.runtime.ie_api.CompiledModel):
             boxes, scores = self.infer_openvino(image)
         elif isinstance(self.model, ort.capi.onnxruntime_inference_collection.InferenceSession):
             boxes, scores = self.infer_ort(image)
-
-        print(boxes.shape, scores.shape)
+        else:
+            raise TypeError(f"invalid model type {type(self.model)}")
+        
+        return torch.from_numpy(boxes), torch.from_numpy(np.squeeze(scores))
 
     def infer_torch(self, image):
         if isinstance(self.model, ReparameterizedSSDNet):
             detection = self.model(torch.from_numpy(image))
         else:
             detection = self.model(torch.from_numpy(image))
+        boxes = np.array([prediction["boxes"].detach().numpy() for prediction in detection])[0]
+        scores = np.array([prediction["scores"].detach().numpy() for prediction in detection])[0]
 
-        boxes = np.array([prediction["boxes"].detach().numpy() for prediction in detection])
-        scores = np.array([prediction["scores"].detach().numpy() for prediction in detection])
         return boxes, scores
 
     def infer_openvino(self, image):
@@ -78,71 +79,33 @@ class Model:
         return self.model.run(["boxes", "scores"], {"data": image})
 
     
+def postprocess_predictions(box_predictions, score_predictions):
+    detections = ReparameterizedSSDNet.parse_output(box_predictions[None, :, :], score_predictions[None, :, :], conf_thresh=0.001)
+    return detections
 
-
-def infer(image: Image, compiled_model):
+def prepare_image_for_inference(image):
     image = ToTensorV2()(image=np.array(image).astype(np.float32))["image"]
     image = image / 255.0
 
-    print(image.shape)
-    print(torch.min(image), torch.max(image))
-    
-    boxes, scores = compiled_model.run(["boxes", "scores"], {"data": np.array(image[None, :, :, :])})
-    # print(predictions)
-    # predictions = compiled_model(image[None, :, :, :])
-    boxes = torch.from_numpy(boxes)
-    # print(predictions.keys())
-    scores = torch.from_numpy(scores)
-    print(boxes.shape)
-    print(scores.shape)
-
-    detection = {
-        "labels": torch.argmax(scores, dim=-1),
-        "scores": torch.max(scores, dim=-1).values,
-        "boxes": boxes,
-    }
-    print(len(detection["labels"]))
-    detection = {
-        "labels": detection["labels"][detection["labels"] != 0],
-        "scores": detection["scores"][detection["labels"] != 0],
-        "boxes": detection["boxes"][detection["labels"] != 0],
-    }
-    print(len(detection["labels"]))
-
-    detection = {
-        "labels": detection["labels"][detection["scores"] > 0.2],
-        "scores": detection["scores"][detection["scores"] > 0.2],
-        "boxes": detection["boxes"][detection["scores"] > 0.2],
-    }
-    return detection
+    return np.array(image)[None, :, :, :]
 
 def main(args):
-    # if path.splitext(args.model)[1] == ".onnx":
-    #     ov_model = ov.convert_model(args.model)
-    # else:
-    #     ov_model = args.model
-
-    # core = ov.Core()
-    # compiled_model = core.compile_model(model=ov_model, device_name="CPU")
-    # output_layer = compiled_model.output(0)
-    # image_size = np.array(compiled_model.input(0).shape)[-2:]
-
-    model = ort.InferenceSession(args.model)
-    input_layer = model.get_inputs()[0]
-    image_size = input_layer.shape[-2:]   
-    output_layer = model.get_outputs()[0]
-
+    image_size = (120, 160)
     image = Image.open(args.image).convert("RGB").resize(image_size[::-1], resample=Image.Resampling.NEAREST)
-    detection = infer(image, model)
-
+    
+    model = Model.create(args.runtime, args.model, reparameterize=args.reparameterize)
+    
+    inference_image = prepare_image_for_inference(image)
+    boxes, scores = model.infer(inference_image)
+    detections = postprocess_predictions(boxes, scores)
     fig, ax = plt.subplots()
 
     ax.imshow(image)
     draw_bboxes_on_axis_from_prediction(
-        ax, detection, image.height, image.width
+        ax, detections[0], image.height, image.width, confidence_threshold=0.2
     )
-
-    fig.savefig(f"output.png")
+    plt.show()
+    # fig.savefig(f"output.png")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -150,9 +113,5 @@ if __name__ == "__main__":
     parser.add_argument("--runtime", help="the runtime to use for inference", choices=["torch", "openvino", "ort"])
     parser.add_argument("--reparameterize", help="whether to reparameterize the lightning model", default=False)
     parser.add_argument("--image", help="the image path", default=None)
-    args = parser.parse_args()
-    model = Model.create(args.runtime, args.model, reparameterize=args.reparameterize)
     
-    image = np.random.randn(1, 3, 120, 160).astype(np.float32)
-    model.infer(image)
-    # main(parser.parse_args())
+    main(parser.parse_args())
