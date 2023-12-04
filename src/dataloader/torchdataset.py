@@ -9,6 +9,13 @@ from typing import Tuple
 import json
 
 JSON_LABELS = ["background", "ball", "robot", "goal_post", "pen_spot"]
+CLASS_MAP = {
+    0: 0, # background
+    1: 1, # ball
+    2: 2, # robot
+    3: 3, # goal_post
+    4: 4, # pen_spot
+}
 
 class Label:
     def __init__(self, image_path):
@@ -45,9 +52,11 @@ class Label:
             # the numbers in the dataset start at 0,
             # but torchvision interprets class 0 as background
             bbox_class = int(numbers[0]) + 1
+            if bbox_class not in CLASS_MAP.keys():
+                continue
             bbox = torch.tensor([float(coord) for coord in numbers[1:]])
             bbox = box_convert(bbox, "cxcywh", "xyxy")
-            target_classes.append(bbox_class)
+            target_classes.append(CLASS_MAP[bbox_class])
             target_bboxes.append(np.array(bbox))
 
         return np.array(target_classes), np.array(target_bboxes)
@@ -133,7 +142,7 @@ class BBoxDataset(torch.utils.data.Dataset):
 
         return image, {
             "labels": target_classes,
-            "boxes": target_bboxes,
+            "boxes": torch.reshape(target_bboxes, (-1, 4)),
             # "boxes": tv_tensors.BoundingBoxes(
             #     target_bboxes, format="XYXY", canvas_size=self.image_size
             # ),
