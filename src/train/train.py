@@ -21,18 +21,22 @@ def main():
         conf_threshold=0.2,
         detections_per_img=50,
         learning_rate_reduction_factor=0.8,
-        out_channels=256,
+        out_channels=128,
+        initial_learning_rate=2e-3,
+        pretrained_weights=False
     )
 
-    dataloader = DataModule(image_size, num_workers=28, batch_size=BATCH_SIZE)
+    dataloader = DataModule(image_size, num_workers=12, batch_size=BATCH_SIZE)
 
     logger = WandbLogger(project="detection")
     trainer = Trainer(
         logger=logger,
-        max_epochs=400,
+        gradient_clip_val=10.0,
+        max_epochs=800,
+        # precision="16-mixed",
         callbacks=[
-            ModelCheckpoint(save_top_k=1, monitor="val/iou", mode="max"),
-            # StochasticWeightAveraging(swa_lrs=1e-2),
+            ModelCheckpoint(save_top_k=1, monitor="val/map", mode="max"),
+            StochasticWeightAveraging(swa_lrs=1e-4, annealing_epochs=50),
             LearningRateMonitor(logging_interval='step')
         ],
         fast_dev_run=False)

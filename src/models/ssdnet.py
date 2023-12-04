@@ -39,6 +39,7 @@ class SSDNet(nn.Module):
         detections_per_img: int,
         out_channels: int,
         backbone: str,
+        pretrained_weights: bool,
     ):
         super().__init__()
 
@@ -49,10 +50,17 @@ class SSDNet(nn.Module):
             self.backbone = mobileone(num_classes, variant="s0")
             self.num_feature_maps = 1
         elif backbone == "mobilenetv3":
-            self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=out_channels)
+            if pretrained_weights:
+                self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=out_channels)
+            else:
+                self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small().features, out_channels=out_channels)
             self.num_feature_maps = 3
         elif backbone == "efficientnetv2":
-            self.backbone = efficientnet_v2_s(weights="DEFAULT").features
+            if pretrained_weights:
+                self.backbone = efficientnet_v2_s(weights="DEFAULT").features
+            else:
+                self.backbone = efficientnet_v2_s().features
+
             self.num_feature_maps = 1
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
@@ -142,14 +150,12 @@ class ReparameterizedSSDNet(nn.Module):
         pred_scores = F.softmax(head_outputs["cls_logits"], dim=-1)
 
         image_anchors = self.anchor_generator(features)
-        # bbox_regression = self.box_coder.decode(bbox_regression, image_anchors)
+
         if batch_size == 1:
-            print(bbox_regression.shape)
             boxes = self.box_coder.decode_single(bbox_regression[0], image_anchors)
             boxes = box_ops.clip_boxes_to_image(boxes, self.image_shape)
             return [{"boxes": boxes, "scores": pred_scores}]
         
-        # return bbox_regression, pred_scores
         results = []
 
         for boxes, scores in zip(bbox_regression, pred_scores):
