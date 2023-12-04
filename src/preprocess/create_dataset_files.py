@@ -148,25 +148,21 @@ if __name__ == "__main__":
     # this script creates the train.txt, val.txt and test.txt files containing
     # paths to the images.
     default_split = Split(0.75, 0.2, 0.05)
-    target_negative_example_rate = 0.1
+    target_negative_example_rate = 0.15
     datafolders = [
         (
             "./datasets/SPLObjDetectDatasetV2/trainval/images/*.png",
             Type.Train,
             default_split,
         ),
-        ("datasets/2021-images/images/*.png", Type.Train, default_split),
+        ("./datasets/2021-images-Devils/images/*.png", Type.TrainAndValidation, default_split),
+        ("datasets/2021-images/images/*.png", Type.TrainAndValidation, default_split),
         (
             "./datasets/SPLObjDetectDatasetV2/test/images/*.png",
             Type.Test,
             default_split,
         ),
         ("./datasets/coco/images/*.jpg", Type.All, Split(1/3, 1/3, 1/3)),
-        (
-            "./datasets/realimages/images/*.png",
-            Type.Validation,
-            default_split
-        ),
     ]
     datalists = list(
         add_data(path, datatype, split) for (path, datatype, split) in datafolders
