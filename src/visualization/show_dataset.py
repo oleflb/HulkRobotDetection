@@ -41,7 +41,9 @@ def main(args):
     yolo_model = load_yolo_model(args)
 
     dataloader = DataModule(image_size, num_workers=8, batch_size=int(args.batchsize))
+    dataloader.setup("real")
     dataloader.setup("fit")
+    dataloader.setup("test")
     dataset = dataloader.val_dataloader()
 
     for images, labels in dataset:
@@ -53,7 +55,10 @@ def main(args):
             detections["torch"] = torch_detections
 
         if isinstance(torch_model, ReparameterizedSSDNet):
-            torch_detections = ReparameterizedSSDNet.parse_output(torch_detections)
+            torch_detections = ReparameterizedSSDNet.parse_output(
+                bbox_regression=[detection["boxes"] for detection in torch_detections],
+                prediction_scores=[detection["scores"] for detection in torch_detections]
+            )
             detections["torch"] = torch_detections
 
         if yolo_model:
@@ -64,8 +69,9 @@ def main(args):
             image = T.ToPILImage()(image)
             fig, ax = plt.subplots()
             ax.imshow(image)
+            ax.set_title(labels[idx]["image_id"])
             
-            draw_bboxes_on_axis_from_truth(ax, detections["truth"][idx], image.height, image.width)
+            draw_bboxes_on_axis_from_truth(ax, labels[idx], image.height, image.width)
             if "torch" in detections:
                 draw_bboxes_on_axis_from_prediction(
                     ax, detections["torch"][idx], image.height, image.width
@@ -97,5 +103,3 @@ if __name__ == "__main__":
     parser.add_argument("--reparameterize", help="whether to reparameterize the lightning model", default=False)
     parser.add_argument("--batchsize", help="the batchsize", default=16)
     main(parser.parse_args())
-
-    main()
