@@ -1,3 +1,4 @@
+wandb/
 .venv/
 lightning_logs/
 datasets/
