@@ -11,22 +11,26 @@ class Augmenter:
 
         self.__transform = A.Compose(
             [
-                A.RandomGamma(p=0.2),
+                A.RandomGamma(p=0.1),
                 A.CLAHE(p=0.2),
                 A.OneOf([
-                     A.Resize(self.height, self.width, interpolation=0),
-                     A.Resize(self.height, self.width, interpolation=1),
-                     A.Resize(self.height, self.width, interpolation=2),
-#                     A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height),
+                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=0),
+                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=1),
+                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=2),
                 ], p=1),
-                A.OneOf([
-                    A.ToGray(),
+                A.ToGray(p=0.1),
+                A.SomeOf([
                     A.RandomBrightnessContrast(),
                     A.HueSaturationValue(),
                     A.RGBShift(),
-                ], p=1),
+                    A.PixelDropout(dropout_prob=0.05, per_channel=True),
+                    A.ChannelShuffle(),
+                ], n=3, p=1),
+                # A.OneOf([ # not implented for bbox
+                #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=0.0),
+                #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=255),
+                # ], p=1),
                 A.HorizontalFlip(p=0.5),
-                # # A.ChannelShuffle(p=0.1),
                 A.Blur(blur_limit=[1, 3]),
                 A.RandomSunFlare(src_radius=100),
                 # A.Lambda(image=self.add_bright_spots, p=0.5),
@@ -81,7 +85,7 @@ class Augmenter:
         return transformed["image"], transformed["class_labels"], transformed["bboxes"]
 
     def add_bright_spots(self, image, **kwargs):
-        max_number_bright_spots = 7
+        max_number_bright_spots = 3
         number_bright_spots = np.random.randint(3, max_number_bright_spots + 1)
 
         for _ in range(number_bright_spots):
