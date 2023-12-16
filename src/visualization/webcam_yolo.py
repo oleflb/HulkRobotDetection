@@ -1,38 +1,27 @@
-from ..models.ssdnet import SSDNet, ReparameterizedSSDNet
-from ..models.lightning import LightningWrapper
 import sys
-import torch
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
+
 import cv2 
 import numpy as np
+import torch
 from ultralytics.utils.plotting import Annotator
-from torchvision.ops import nms
+from ultralytics import YOLO
 
 CLASSES = ["Background", "Ball", "Robot", "Goal Post", "Penalty Spot"]
 
-model = LightningWrapper.load_from_checkpoint(
-    sys.argv[1], map_location=torch.device("cpu"), pixelunshuffle=1,
-)
+model = YOLO(sys.argv[1])
 
-(h,w) = model.image_size
 transform = A.Compose([
-    A.Resize(h, w, interpolation=1),
+    A.Resize(96, 128, interpolation=1),
     ToTensorV2(),
 ])
-model = model.model.reparameterize((h,w))
-model.train(False)
-
-sx = 640 / w
-sy = 480 / h
-  
+sx, sy = (640 / 128, 480 / 96)
 # define a video capture object 
 vid = cv2.VideoCapture(0) 
-  
 
 cv2.namedWindow('detections', cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("detections", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
 
 while(True): 
       
@@ -40,25 +29,19 @@ while(True):
     # by frame 
     ret, frame = vid.read() 
     image = frame.astype(np.float32) / 255.0
-    image = transform(image=image)["image"]
+    boxes = model(transform(image=image)["image"][None, :, :, :])[0].boxes
 
-    detection = model(torch.tensor(image[None, :, :, :]))
-    boxes = np.array([prediction["boxes"].detach().numpy() for prediction in detection])[0]
-    scores = np.array([prediction["scores"].detach().numpy() for prediction in detection])[0]
-    results = ReparameterizedSSDNet.parse_output(torch.tensor(boxes[None, :, :]), torch.tensor(scores), conf_thresh=0.001)[0]
+    for box in boxes:
+        score = box.conf.item()
+        label = int(box.cls) + 1
 
-    indices = nms(results["boxes"], results["scores"], iou_threshold=0.2)
-
-    for index in indices:
-        box = results["boxes"][index]
-        label = results["labels"][index]
-        score = results["scores"][index]
         if score < 0.1:
             continue
-        x0 = sx*box[0]
-        x1 = sx*box[2]
-        y0 = sy*box[1]
-        y1 = sy*box[3]
+        xyxy = torch.squeeze(box.xyxy)
+        x0 = xyxy[0] * sx
+        y0 = xyxy[1] * sy
+        x1 = xyxy[2] * sx
+        y1 = xyxy[3] * sy
         
         start_point = (int(x0), int(y0))
         end_point = (int(x1), int(y1))

@@ -9,7 +9,8 @@ from ..augmentation.augmenter import Augmenter
 
 
 def collate_fn(batch):
-    return tuple(zip(*batch))
+    images, labels = tuple(zip(*batch))
+    return torch.stack(images), labels
 
 
 class DataModule(LightningDataModule):

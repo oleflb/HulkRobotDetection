@@ -112,7 +112,8 @@ class LightningWrapper(LightningModule):
         # print("target", [pred["labels"] for pred in labels])
 
 
-
+        # map_class = score["map_per_class"]
+        # mar_class = score["mar_100_per_class"]
         self.log_dict({
             "val/map": score["map"],
             "val/map50": score["map_50"],
@@ -122,12 +123,20 @@ class LightningWrapper(LightningModule):
             "val/mar100": score["mar_100"],
             "val/iou": iou,
             "val/loss": loss,
+            # "val/map_ball": map_class[0],
+            # "val/map_robot": map_class[1],
+            # "val/map_goalpost": map_class[2],
+            # "val/map_penaltyspot": map_class[3],
+            # "val/mar_ball": mar_class[0],
+            # "val/mar_robot": mar_class[1],
+            # "val/mar_goalpost": mar_class[2],
+            # "val/mar_penaltyspot": mar_class[3],
         }, sync_dist=True, batch_size=self.batch_size)
 
     def configure_optimizers(self):
         optimizer = optim.RMSprop(self.parameters(), lr=self.initial_learning_rate, weight_decay=1e-4, momentum=0.9, eps=0.0316, alpha=0.9)
 #        optimizer = optim.AdamW(self.parameters(), lr=self.initial_learning_rate, weight_decay=1e-4)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=30, min_lr=1e-7)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=15, min_lr=1e-7)
         return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val/loss"}
 
     def forward(self, images):

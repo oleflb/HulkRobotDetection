@@ -57,7 +57,15 @@
             "request": "launch",
             "module": "src.visualization.run",
             "justMyCode": true,
-            "args": ["--model", "mobilenetv3_120_160.xml", "--runtime", "openvino", "--image", "datasets/sample_images/sample.png"]
+            "args": ["--model", "epoch=156-step=15229.ckpt", "--runtime", "torch", "--image", "datasets/sample_images/sample.png", "--reparameterize", "True"]
+        },
+        {   
+            "name": "Quantization",
+            "type": "python",
+            "request": "launch",
+            "module": "src.train.quantization",
+            "args": ["epoch=509-step=61710.ckpt"],
+            "justMyCode": false,       
         }
     ]
 }

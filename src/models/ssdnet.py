@@ -42,7 +42,6 @@ class SSDNet(nn.Module):
         pretrained_weights: bool,
     ):
         super().__init__()
-
         if backbone == "squeezenet":
             self.backbone = models.squeezenet1_0().features
             self.num_feature_maps = 1

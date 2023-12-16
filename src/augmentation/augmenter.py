@@ -14,9 +14,12 @@ class Augmenter:
                 A.RandomGamma(p=0.1),
                 A.CLAHE(p=0.2),
                 A.OneOf([
-                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=0),
-                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=1),
-                    A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=2),
+                    A.Resize(height, width, interpolation=0),
+                    A.Resize(height, width, interpolation=1),
+                    A.Resize(height, width, interpolation=2),
+                    # A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=0),
+                    # A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=1),
+                    # A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=2),
                 ], p=1),
                 A.ToGray(p=0.1),
                 A.SomeOf([
@@ -24,8 +27,8 @@ class Augmenter:
                     A.HueSaturationValue(),
                     A.RGBShift(),
                     A.PixelDropout(dropout_prob=0.05, per_channel=True),
-                    A.ChannelShuffle(),
-                ], n=3, p=1),
+                    # A.ChannelShuffle(),
+                ], n=2, p=1),
                 # A.OneOf([ # not implented for bbox
                 #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=0.0),
                 #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=255),
@@ -39,7 +42,7 @@ class Augmenter:
                 ToTensorV2(),
             ],
             bbox_params=A.BboxParams(
-                format="albumentations", label_fields=["class_labels"], min_visibility=0.2
+                format="albumentations", label_fields=["class_labels"], min_visibility=0.2, min_height=4.0, min_width=4.0,
             ),
         )
 

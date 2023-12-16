@@ -6,7 +6,7 @@ from onnxsim import simplify
 import onnx
 
 model = LightningWrapper.load_from_checkpoint(
-    sys.argv[1], map_location=torch.device("cpu")
+    sys.argv[1], map_location=torch.device("cpu"), pixelunshuffle=1
 )
 
 image_size = model.image_size

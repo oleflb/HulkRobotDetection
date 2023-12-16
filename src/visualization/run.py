@@ -33,7 +33,7 @@ class Model:
         elif runtime == "torch":
             assert model_extension == ".ckpt", "torch only supports .ckpt format"
             model = LightningWrapper.load_from_checkpoint(
-                model_path, map_location=torch.device("cpu")
+                model_path, map_location=torch.device("cpu"), pixelunshuffle=1,
             )
             model.eval()
             if reparameterize:

@@ -5,10 +5,10 @@ from lightning.pytorch.loggers import WandbLogger
 from ..models.lightning import LightningWrapper
 from ..dataloader.lightningdataset import DataModule
 import torch
-
+from tqdm import tqdm
 
 def main():
-    BATCH_SIZE = 64
+    BATCH_SIZE = 256
     # image_size = (480, 640)
     image_size = (480 // 4, 640 // 4)
     num_classes = 1 + 4
@@ -23,15 +23,23 @@ def main():
         learning_rate_reduction_factor=0.8,
         out_channels=128,
         initial_learning_rate=2e-3,
-        pretrained_weights=False
+        pretrained_weights=False,
     )
 
     dataloader = DataModule(image_size, num_workers=12, batch_size=BATCH_SIZE)
+    dataloader.setup("fit")
+    class_count = torch.zeros(num_classes, dtype=torch.long)
+
+    # for (images, labels) in tqdm(dataloader.train_dataloader()):
+    #     for label in labels:
+    #         class_count[label["labels"]] += 1
+
+    print(f"class count for objects: {list(class_count)}")
 
     logger = WandbLogger(project="detection")
     trainer = Trainer(
         logger=logger,
-        gradient_clip_val=10.0,
+        gradient_clip_val=100.0,
         max_epochs=800,
         # precision="16-mixed",
         callbacks=[
