@@ -1,7 +1,9 @@
 import timm
 import torch
+from torch import nn
+from typing import Tuple
 
-class RobotDetectionBackbone(nn.module):
+class RobotDetectionBackbone(nn.Module):
     def __init__(self, model_variant: str, pretrained_weights: bool, use_fpn: bool = False, out_channels: int = 256, image_size: Tuple[int, int] = (480, 640)):
         """
         Initializes the RobotDetectionBackbone class.
@@ -24,7 +26,7 @@ class RobotDetectionBackbone(nn.module):
         self.num_feature_maps = 1
         self._create_backbone()
     
-    def _create_backbone():
+    def _create_backbone(self):
         """
         Creates the backbone network and optionally the Feature Pyramid Network (FPN).
         """
