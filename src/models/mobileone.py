@@ -346,8 +346,8 @@ class MobileOne(nn.Module):
             num_blocks_per_stage[3],
             num_se_blocks=num_blocks_per_stage[3] if use_se else 0,
         )
-        self.gap = nn.AdaptiveAvgPool2d(output_size=1)
-        self.linear = nn.Linear(int(512 * width_multipliers[3]), num_classes)
+        # self.gap = nn.AdaptiveAvgPool2d(output_size=1)
+        # self.linear = nn.Linear(int(512 * width_multipliers[3]), num_classes)
 
     def _make_stage(
         self, planes: int, num_blocks: int, num_se_blocks: int
@@ -410,9 +410,9 @@ class MobileOne(nn.Module):
         x = self.stage2(x)
         x = self.stage3(x)
         x = self.stage4(x)
-        x = self.gap(x)
-        x = x.view(x.size(0), -1)
-        x = self.linear(x)
+        # x = self.gap(x)
+        # x = x.view(x.size(0), -1)
+        # x = self.linear(x)
         return x
 
 
