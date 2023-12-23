@@ -14,33 +14,7 @@ import copy
 from typing import Tuple, List
 import numpy as np
 from collections import OrderedDict
-
-class FPNMobileNetBackbone(nn.Module):
-    def __init__(self, backbone: nn.Module, returned_layers: List[str] = None, out_channels: int = 256):
-        super().__init__()
-        stage_indices = [0] + [i for i, b in enumerate(backbone) if getattr(b, "_is_cn", False)] + [len(backbone) - 1]
-        num_stages = len(stage_indices)
-
-        if returned_layers is None:
-            returned_layers = [num_stages - 2, num_stages - 1]
-        
-        return_layers = {f'{stage_indices[k]}': str(v) for v, k in enumerate(returned_layers)}
-        in_channels_list = [backbone[stage_indices[i]].out_channels for i in returned_layers]
-
-        self.backbone = BackboneWithFPN(backbone, return_layers, in_channels_list, out_channels)
-
-    def forward(self, x):
-        return self.backbone(x)
-
-class RepVitFpn(nn.Module):
-    def __init__(self, repvit_string, out_channels=256, pretrained_weights=True):
-        super().__init__()
-        self.repvit = timm.create_model(repvit_string, features_only=True, pretrained=pretrained_weights)
-        self.fpn = FeaturePyramidNetwork([48, 96, 192, 384], out_channels=out_channels)
-
-    def forward(self, x):
-        features = self.repvit(x)
-        return self.fpn(OrderedDict(list(enumerate(features))))
+from .backbone import RobotDetectionBackbone
 
 class SSDNet(nn.Module):
     def __init__(
@@ -51,37 +25,15 @@ class SSDNet(nn.Module):
         out_channels: int,
         backbone: str,
         pretrained_weights: bool,
+        use_fpn: bool,
     ):
         super().__init__()
-        if backbone == "squeezenet":
-            self.backbone = models.squeezenet1_0().features
-            self.num_feature_maps = 1
-        elif backbone == "mobileone-s0":
-            self.backbone = mobileone(num_classes, variant="s0")
-            self.num_feature_maps = 1
-        elif backbone == "mobileone-s1":
-            self.backbone = mobileone(num_classes, variant="s1")
-            self.num_feature_maps = 1
-        elif backbone == "repvit_m0_9":
-            self.backbone = RepVitFpn("repvit_m0_9", out_channels=out_channels, pretrained_weights=pretrained_weights)
-            self.num_feature_maps = 4
-        elif backbone == "mobilenetv3":
-            if pretrained_weights:
-                self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=out_channels)
-            else:
-                self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small().features, out_channels=out_channels)
-            self.num_feature_maps = 3
-        elif backbone == "efficientnetv2":
-            if pretrained_weights:
-                self.backbone = efficientnet_v2_s(weights="DEFAULT").features
-            else:
-                self.backbone = efficientnet_v2_s().features
+        self.backbone = RobotDetectionBackbone(
+            backbone, pretrained_weights, use_fpn=use_fpn, out_channels=out_channels, image_size=image_size)
 
-            self.num_feature_maps = 1
-        else:
-            raise ValueError(f"{backbone} is not a valid backbone")
-
-        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.4992, 0.9723, 1.8852),) * self.num_feature_maps)
+        anchor_generator = DefaultBoxGenerator(aspect_ratios=(
+            (0.4992, 0.9723, 1.8852),) * self.backbone.num_feature_maps)
+        
         print(f"image_size is (h*w) {image_size}")
         self.ssd = SSD(
             self.backbone,
@@ -100,7 +52,7 @@ class SSDNet(nn.Module):
             backbone = reparameterize_model(self.ssd.backbone)
         else:
             backbone = copy.deepcopy(self.ssd.backbone)
-        
+
         return ReparameterizedSSDNet(
             image_shape=image_shape,
             backbone=backbone,
@@ -131,8 +83,10 @@ class ReparameterizedBoxGenerator(nn.Module):
         dboxes_in_image = default_boxes
         dboxes_in_image = torch.cat(
             [
-                (dboxes_in_image[:, :2] - 0.5 * dboxes_in_image[:, 2:]) * x_y_size,
-                (dboxes_in_image[:, :2] + 0.5 * dboxes_in_image[:, 2:]) * x_y_size,
+                (dboxes_in_image[:, :2] - 0.5 *
+                 dboxes_in_image[:, 2:]) * x_y_size,
+                (dboxes_in_image[:, :2] + 0.5 *
+                 dboxes_in_image[:, 2:]) * x_y_size,
             ],
             -1,
         )
@@ -160,12 +114,12 @@ class ReparameterizedSSDNet(nn.Module):
         batch_size = images.shape[0]
         images = self.normalize(images)
         features = self.backbone(images)
-        
+
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])
 
         features = list(features.values())
-        
+
         head_outputs = self.head(features)
 
         bbox_regression = head_outputs["bbox_regression"]
@@ -174,10 +128,11 @@ class ReparameterizedSSDNet(nn.Module):
         image_anchors = self.anchor_generator(features)
 
         if batch_size == 1:
-            boxes = self.box_coder.decode_single(bbox_regression[0], image_anchors)
+            boxes = self.box_coder.decode_single(
+                bbox_regression[0], image_anchors)
             boxes = box_ops.clip_boxes_to_image(boxes, self.image_shape)
             return [{"boxes": boxes, "scores": pred_scores}]
-        
+
         results = []
 
         for boxes, scores in zip(bbox_regression, pred_scores):
@@ -190,6 +145,7 @@ class ReparameterizedSSDNet(nn.Module):
             })
 
         return results
+
     @classmethod
     def parse_output(cls, bbox_regression, prediction_scores, conf_thresh=0.2):
         assert bbox_regression.ndim == 3

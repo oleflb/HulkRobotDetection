@@ -29,6 +29,7 @@ class LightningWrapper(LightningModule):
         out_channels: int,
         initial_learning_rate: float,
         pretrained_weights: bool,
+        use_fpn: bool,
     ):
         super().__init__()
         self.model_variant = model
@@ -39,6 +40,7 @@ class LightningWrapper(LightningModule):
             detections_per_img=detections_per_img,
             out_channels=out_channels,
             pretrained_weights=pretrained_weights,
+            use_fpn=use_fpn,
         )
         self.map_metric = MeanAveragePrecision()
         self.iou_metric = IntersectionOverUnion()
@@ -48,12 +50,15 @@ class LightningWrapper(LightningModule):
         self.batch_size = batch_size
         self.iou_threshold = iou_threshold
         self.conf_threshold = conf_threshold
-        self.image_size = image_size
-        self.num_classes = num_classes
         self.detections_per_img = detections_per_img
-        self.learning_rate_reduction_factor = learning_rate_reduction_factor
+        self.image_size = image_size
         self.initial_learning_rate = initial_learning_rate
-
+        self.iou_threshold = iou_threshold
+        self.learning_rate_reduction_factor = learning_rate_reduction_factor
+        self.num_classes = num_classes
+        self.out_channels = out_channels
+        self.pretrained_weights = pretrained_weights
+        self.use_fpn = use_fpn
 
         self.save_hyperparameters()
 
