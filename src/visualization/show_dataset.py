@@ -9,6 +9,9 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator
 import torch.nn.functional as F
+import matplotlib as mpl
+mpl.use("QtAgg")
+
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
@@ -19,7 +22,7 @@ import argparse
 def load_torch_model(args):
     if args.ckpt:
         model = LightningWrapper.load_from_checkpoint(
-            args.ckpt, map_location=torch.device("cpu")
+            args.ckpt, map_location=torch.device("cpu"), use_fpn=False
         )
         image_size = model.image_size
         model.eval()
