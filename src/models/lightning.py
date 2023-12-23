@@ -42,13 +42,10 @@ class LightningWrapper(LightningModule):
             pretrained_weights=pretrained_weights,
             use_fpn=use_fpn,
         )
-        self.map_metric = MeanAveragePrecision()
+        self.map_metric = MeanAveragePrecision(iou_thresholds=[0.5, 0.75, 0.9], max_detection_thresholds=[50], backend="faster_coco_eval")
         self.iou_metric = IntersectionOverUnion()
 
-        self.pretrained_weights = pretrained_weights
-        self.out_channels = out_channels
         self.batch_size = batch_size
-        self.iou_threshold = iou_threshold
         self.conf_threshold = conf_threshold
         self.detections_per_img = detections_per_img
         self.image_size = image_size
@@ -65,37 +62,30 @@ class LightningWrapper(LightningModule):
     def forward(self, images):
         return self.model(images)
 
-    def get_accuracy(self, predictions, labels):
-        def filter_confidence(prediction, indices):
-            return indices[prediction["scores"][indices] >= self.conf_threshold]
-
-        box_indices = [
-            nms(prediction["boxes"], prediction["scores"], self.iou_threshold)
-            for prediction in predictions
-        ]
-
-        nms_prediction = [
-            {
-                "boxes": prediction["boxes"][box_indices],
-                "scores": prediction["scores"][box_indices],
-                "labels": prediction["labels"][box_indices],
-            }
-            for prediction, box_indices in zip(predictions, box_indices)
-        ]
-
-        return self.map_metric(nms_prediction, labels)
+    def on_train_start(self):
+        self.iou_metric.reset()
+        self.map_metric.reset()
 
     def _step(self, images, labels):
-        loss_dict = self.model(images, labels)
-        losses = sum(loss for loss in loss_dict.values())
-
-        return losses
+        return self.model(images, labels)
 
     def training_step(self, batch, batch_idx):
         images, labels = batch
         loss = self._step(images, labels)
-        self.log("train_loss", loss, batch_size=self.batch_size)
-        return loss
+        bbox_loss = loss["bbox_regression"]
+        class_loss = loss["classification"]
+
+        self.log_dict({
+            "train/bbox_loss": bbox_loss,
+            "train/class_loss": class_loss,
+            "train/loss": bbox_loss + class_loss,
+        }, batch_size=self.batch_size)
+        
+        return bbox_loss + class_loss
+
+    def on_validation_start(self):
+        self.iou_metric.reset()
+        self.map_metric.reset()
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch
@@ -105,41 +95,24 @@ class LightningWrapper(LightningModule):
             loss = self._step(images, labels)
             self.train(False)
 
-        iou = self.iou_metric(predictions, labels)["iou"]
-        score = self.map_metric(predictions, labels) # self.get_accuracy(predictions, labels)
-        # if score["map"] < 0.0:
-        #     print("negative")
-        # else:
-        #     print("positive")
-        # print(iou)
-        # print([len(pred["labels"]) for pred in predictions])
-        # print("prediction", [pred["labels"] for pred in predictions])
-        # print("target", [pred["labels"] for pred in labels])
+        iou_score = self.iou_metric(predictions, labels)
+        map_score = self.map_metric(predictions, labels) 
 
-
-        # map_class = score["map_per_class"]
-        # mar_class = score["mar_100_per_class"]
         self.log_dict({
-            "val/map": score["map"],
-            "val/map50": score["map_50"],
-            "val/map75": score["map_75"],
-            "val/mar1": score["mar_1"],
-            "val/mar10": score["mar_10"],
-            "val/mar100": score["mar_100"],
-            "val/iou": iou,
-            "val/loss": loss,
-            # "val/map_ball": map_class[0],
-            # "val/map_robot": map_class[1],
-            # "val/map_goalpost": map_class[2],
-            # "val/map_penaltyspot": map_class[3],
-            # "val/mar_ball": mar_class[0],
-            # "val/mar_robot": mar_class[1],
-            # "val/mar_goalpost": mar_class[2],
-            # "val/mar_penaltyspot": mar_class[3],
-        }, sync_dist=True, batch_size=self.batch_size)
-
+            "val/iou": iou_score["iou"],
+            "val/bbox_loss": loss["bbox_regression"],
+            "val/class_loss": loss["classification"],
+            "val/loss": loss["bbox_regression"] + loss["classification"],
+            "val/map": map_score["map"],
+            "val/map_50": map_score["map_50"],
+            "val/map_75": map_score["map_75"],
+            # "val/map_90": map_score["map_90"],
+            "val/mar_1": map_score["mar_1"],
+            "val/ma_f1": 2.0 * (map_score["map"] * map_score["mar_1"]) / (map_score["map"] + map_score["mar_1"]),   
+        }, batch_size=self.batch_size, rank_zero_only=True, sync_dist=True, on_step=False, on_epoch=True)
+            
     def configure_optimizers(self):
-        optimizer = optim.RMSprop(self.parameters(), lr=self.initial_learning_rate, weight_decay=1e-4, momentum=0.9, eps=0.0316, alpha=0.9)
+        optimizer = optim.RMSprop(self.parameters(), lr=self.initial_learning_rate, weight_decay=5e-4, momentum=0.937, eps=0.0316, alpha=0.9)
 #        optimizer = optim.AdamW(self.parameters(), lr=self.initial_learning_rate, weight_decay=1e-4)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=self.learning_rate_reduction_factor, patience=15, min_lr=1e-7)
         return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val/loss"}
