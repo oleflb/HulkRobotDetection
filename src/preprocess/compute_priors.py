@@ -3,42 +3,47 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 from torchvision.ops import box_iou
-import sklearn.cluster
+import torch
+from sklearn.cluster import KMeans
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import itertools
 
-def iou(bboxes, centroid):
-    return box_iou(bboxes, centroid)
+def average_iou(bboxes, centroids):
+    # bboxes: [-1, 2]
+    # centroids: [n, 2]
+    intersection_width = torch.minimum(centroids[:, [0]], bboxes[:, 0]).T
+    intersection_height = torch.minimum(centroids[:, [1]], bboxes[:, 1]).T
 
-class IOUKMeans(sklearn.cluster.KMeans):
-    def __init__(
-        self,
-        n_clusters=8,
-        *,
-        init="k-means++",
-        n_init=10,
-        max_iter=300,
-        tol=1e-4,
-        verbose=0,
-        random_state=None,
-        copy_x=True,
-        algorithm="lloyd",
-    ):
-        super().__init__(
-            n_clusters=n_clusters,
-            init=init,
-            n_init=n_init,
-            max_iter=max_iter,
-            tol=tol,
-            verbose=verbose,
-            random_state=random_state,
-            copy_x=copy_x,
-            algorithm=algorithm
-        )
+    if torch.any(intersection_height == 0) or torch.any(intersection_width == 0):
+        raise ValueError("Some bboxes have size 0")
 
-    def _transform(self, X):
-        print(X)
-        # return anchor_iou(X, self.cluster_centers_)
+    intersection_area = intersection_height * intersection_width
+    boxes_area = torch.prod(bboxes, dim=1, keepdim=True)
+    anchors_area = torch.prod(bboxes, dim=1, keepdim=True)
+    union_area = boxes_area + anchors_area - intersection_area
+
+    avg_iou = torch.mean(torch.max(intersection_area / union_area, dim=1).values)
+
+    return avg_iou
+
+def kmeans_aspect_ratios(bboxes, kmeans_max_iter, num_aspect_ratios):
+    assert len(bboxes)
+    assert bboxes.shape[1] == 2
+
+    normalized_bboxes = bboxes / torch.sqrt(torch.prod(bboxes, dim=1, keepdim=True))
+    kmeans = KMeans(init='random', n_init=10, n_clusters=num_aspect_ratios, random_state=0, max_iter=kmeans_max_iter)
+    kmeans.fit(X=normalized_bboxes)
+
+    ar = torch.from_numpy(kmeans.cluster_centers_)
+    assert len(ar)
+
+    avg_iou_perc = average_iou(normalized_bboxes, ar)
+
+    aspect_ratios = [w/h for w,h in ar]
+
+    return aspect_ratios, avg_iou_perc
+
 
 def main(args):
     dataloader = DataModule((480, 640), num_workers=8, batch_size=1)
@@ -48,6 +53,7 @@ def main(args):
     ws = []
     hs = []
 
+    # for _, labels in tqdm(itertools.islice(dataset, 100)):
     for _, labels in tqdm(dataset):
         bboxes = labels[0]["boxes"]
         for bbox in bboxes:
@@ -55,16 +61,11 @@ def main(args):
             ws.append(max_x - min_x)
             hs.append(max_y - min_y)
 
-    ws = np.array(ws)
-    hs = np.array(hs)
-    plt.scatter(ws / hs, np.zeros_like(ws))
-    plt.show()
-    
-    plt.scatter(ws, hs)
-    plt.show()
+    bboxes = torch.tensor([ws, hs])
+    aspect_ratios, mean_iou = kmeans_aspect_ratios(bboxes.T, 1000, 4)
+    print(f"Final IOU: {100*mean_iou:.2f}%")
+    print(aspect_ratios)
 
-    plt.scatter(np.log(ws), np.log(hs))
-    plt.show()
 
 
 if __name__ == "__main__":
