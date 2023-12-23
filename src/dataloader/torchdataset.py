@@ -17,87 +17,45 @@ CLASS_MAP = {
     4: 4, # pen_spot
 }
 
-class Label:
-    def __init__(self, image_path):
-        # image_path = .../datasets/NAME/images/123.png
-        dir_name = path.dirname(image_path)
-        # dir_name = .../datasets/NAME/images
-        labels_path = "labels".join(dir_name.rsplit("images", 1))
-        # labels_path = .../datasets/NAME/labels
-        image_name = path.splitext(path.basename(image_path))[0]
-        # image_name = 123
-        label_path_without_ext = path.join(labels_path, image_name)
-        # label_path_without_ext = .../datasets/NAME/labels/123
+def convert_image_path_to_label_path(image_path):
+    # image_path = .../datasets/NAME/images/123.png
+    dir_name = path.dirname(image_path)
+    # dir_name = .../datasets/NAME/images
+    labels_path = "labels".join(dir_name.rsplit("images", 1))
+    # labels_path = .../datasets/NAME/labels
+    image_name = path.splitext(path.basename(image_path))[0]
+    # image_name = 123
+    label_path_without_ext = path.join(labels_path, image_name)
+    # label_path_without_ext = .../datasets/NAME/labels/123
+    return label_path_without_ext + ".txt"
 
-        if path.exists(label_path_without_ext + ".txt"):
-            # Default yolo format
-            self.type = "txt"
-            self.path = label_path_without_ext + ".txt"
-        elif path.exists(label_path_without_ext + ".json"):
-            # Output from anylabeling label tool
-            self.type = "json"
-            self.path = label_path_without_ext + ".json"
-        else:
-            # Used for negative examples without any robots, balls, ...
-            self.type = None
-            self.path = None
-
-    def __load_txt(self):
-        label_strings = open(self.path).readlines()
-        target_classes = []
-        target_bboxes = []
-
-        for label in label_strings:
-            numbers = label.split()
-            # the numbers in the dataset start at 0,
-            # but torchvision interprets class 0 as background
-            bbox_class = int(numbers[0]) + 1
-            if bbox_class not in CLASS_MAP.keys():
-                continue
-            bbox = torch.tensor([float(coord) for coord in numbers[1:]])
-            bbox = box_convert(bbox, "cxcywh", "xyxy")
-            target_classes.append(CLASS_MAP[bbox_class])
-            target_bboxes.append(np.array(bbox))
-
-        return np.array(target_classes), np.array(target_bboxes)
-
-    def __load_json(self):
-        target_classes = []
-        target_bboxes = []
-
-        labels = json.load(open(self.path))
-        height = labels["imageHeight"]
-        width  = labels["imageWidth"]
-        normalizer = np.array([width, height, width, height])
-
-        for annotation in labels["shapes"]:
-            label = annotation["label"]
-            bbox = np.array(annotation["points"]).flatten()
-            
-            target_classes.append(JSON_LABELS.index(label))
-            target_bboxes.append(bbox / normalizer)
-
-        return np.array(target_classes), np.array(target_bboxes)
-
-    def __load_empty(self):
+def load_labels(labels_path):
+    if not path.exists(labels_path):
         return np.array([]), np.array([])
+    
+    label_strings = open(labels_path).readlines()
+    target_classes = []
+    target_bboxes = []
 
-    def load_labels(self):
-        # returns the boxes in normalized xyxy format and classes
-        if self.type == "txt":
-            return self.__load_txt()
-        elif self.type == "json":
-            return self.__load_json()
-        elif self.type == None:
-            return self.__load_empty()
-        
-        raise ValueError(f"{self.path} is not a valid label path")
+    for label in label_strings:
+        numbers = label.split()
+        # the numbers in the dataset start at 0,
+        # but torchvision interprets class 0 as background
+        bbox_class = int(numbers[0]) + 1
+        if bbox_class not in CLASS_MAP.keys():
+            continue
+        bbox = torch.tensor([float(coord) for coord in numbers[1:]])
+        bbox = box_convert(bbox, "cxcywh", "xyxy")
+        target_classes.append(CLASS_MAP[bbox_class])
+        target_bboxes.append(np.array(bbox))
+
+    return np.array(target_classes), np.array(target_bboxes)
 
 class BBoxDataset(torch.utils.data.Dataset):
     def __init__(self, image_size: Tuple[int, int], txt_file: str, augmenter=None):
         self.augmenter = augmenter
         self.data_paths = list(
-            (image_path.strip(), Label(image_path.strip()))
+            (image_path.strip(), load_labels(convert_image_path_to_label_path(image_path.strip())))
             for image_path in open(txt_file).readlines()
         )
         self.image_size = image_size
@@ -106,9 +64,9 @@ class BBoxDataset(torch.utils.data.Dataset):
         return len(self.data_paths)
 
     def __getitem__(self, idx):
-        image_path, label_path = self.data_paths[idx]
+        image_path, (target_classes, target_bboxes) = self.data_paths[idx]
         # target_bboxes are in normalized xyxy format
-        target_classes, target_bboxes = label_path.load_labels()
+        # target_classes, target_bboxes = label_path.load_labels()
 
         # albumentations only allows the bbox interval (0, 1], therefore we clip the bbox
         target_bboxes = np.clip(target_bboxes, np.finfo(np.float32).eps, 1.0)
