@@ -1,13 +1,15 @@
 import torch
 from torch import nn
+import timm
 import torch.nn.functional as F
 import torchvision
 import torchvision.models as models
 from torchvision.ops import boxes as box_ops
+from torchvision.ops import FeaturePyramidNetwork
 from torchvision.models.detection.ssd import SSD, DefaultBoxGenerator
 from torchvision.models.detection.backbone_utils import BackboneWithFPN
 from torchvision.models import efficientnet_v2_s
-from .mobileone import mobileone
+from .mobileone import mobileone, reparameterize_model, MobileOne
 import copy
 from typing import Tuple, List
 import numpy as np
@@ -30,6 +32,15 @@ class FPNMobileNetBackbone(nn.Module):
     def forward(self, x):
         return self.backbone(x)
 
+class RepVitFpn(nn.Module):
+    def __init__(self, repvit_string, out_channels=256, pretrained_weights=True):
+        super().__init__()
+        self.repvit = timm.create_model(repvit_string, features_only=True, pretrained=pretrained_weights)
+        self.fpn = FeaturePyramidNetwork([48, 96, 192, 384], out_channels=out_channels)
+
+    def forward(self, x):
+        features = self.repvit(x)
+        return self.fpn(OrderedDict(list(enumerate(features))))
 
 class SSDNet(nn.Module):
     def __init__(
@@ -45,9 +56,15 @@ class SSDNet(nn.Module):
         if backbone == "squeezenet":
             self.backbone = models.squeezenet1_0().features
             self.num_feature_maps = 1
-        elif backbone == "mobileone":
+        elif backbone == "mobileone-s0":
             self.backbone = mobileone(num_classes, variant="s0")
             self.num_feature_maps = 1
+        elif backbone == "mobileone-s1":
+            self.backbone = mobileone(num_classes, variant="s1")
+            self.num_feature_maps = 1
+        elif backbone == "repvit_m0_9":
+            self.backbone = RepVitFpn("repvit_m0_9", out_channels=out_channels, pretrained_weights=pretrained_weights)
+            self.num_feature_maps = 4
         elif backbone == "mobilenetv3":
             if pretrained_weights:
                 self.backbone = FPNMobileNetBackbone(models.mobilenet_v3_small(weights="DEFAULT").features, out_channels=out_channels)
@@ -64,7 +81,7 @@ class SSDNet(nn.Module):
         else:
             raise ValueError(f"{backbone} is not a valid backbone")
 
-        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.5, 1.0, 2.0),) * self.num_feature_maps)
+        anchor_generator = DefaultBoxGenerator(aspect_ratios=((0.4992, 0.9723, 1.8852),) * self.num_feature_maps)
         print(f"image_size is (h*w) {image_size}")
         self.ssd = SSD(
             self.backbone,
@@ -78,9 +95,15 @@ class SSDNet(nn.Module):
         return self.ssd(images, labels)
 
     def reparameterize(self, image_shape) -> nn.Module:
+        backbone = None
+        if isinstance(self.backbone, MobileOne):
+            backbone = reparameterize_model(self.ssd.backbone)
+        else:
+            backbone = copy.deepcopy(self.ssd.backbone)
+        
         return ReparameterizedSSDNet(
             image_shape=image_shape,
-            backbone=copy.deepcopy(self.ssd.backbone),
+            backbone=backbone,
             head=copy.deepcopy(self.ssd.head),
             anchor_generator=copy.deepcopy(self.ssd.anchor_generator),
             box_coder=copy.deepcopy(self.ssd.box_coder),
