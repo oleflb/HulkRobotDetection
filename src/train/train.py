@@ -21,14 +21,14 @@ def main():
     model = LightningWrapper(
         image_size,
         num_classes,
-        model="repvit_m0_9",
+        model="mobileone_s1",
         batch_size=BATCH_SIZE,
         iou_threshold=0.5,
         conf_threshold=0.2,
         detections_per_img=50,
         learning_rate_reduction_factor=0.8,
         out_channels=32,
-        initial_learning_rate=2e-3,
+        initial_learning_rate=1e-3,
         use_fpn=True,
         pretrained_weights=False,
     )

@@ -2,6 +2,9 @@ import timm
 import torch
 from torch import nn
 from typing import Tuple
+from torchvision.ops import FeaturePyramidNetwork
+
+from collections import OrderedDict
 
 class RobotDetectionBackbone(nn.Module):
     def __init__(self, model_variant: str, pretrained_weights: bool, use_fpn: bool = False, out_channels: int = 256, image_size: Tuple[int, int] = (480, 640)):
@@ -20,12 +23,26 @@ class RobotDetectionBackbone(nn.Module):
         self.model_variant = model_variant
         self.pretrained_weights = pretrained_weights
         self.use_fpn = use_fpn
-        self.out_channels = out_channels
+        self.fpn_out_channels = out_channels
+        self.out_channels = None
         self.backbone = None
         self.fpn = None
         self.num_feature_maps = 1
         self._create_backbone()
-    
+        self._compute_out_channels()
+
+    def _compute_out_channels(self):
+            """
+            Computes the number of output channels for each feature map in the backbone network.
+            """
+            example_input = torch.randn((1, 3, *self.image_size))
+            with torch.no_grad():
+                features = self.forward(example_input)
+                if isinstance(features, torch.Tensor):
+                    features = OrderedDict([("0", features)])
+
+                self.out_channels = list(f.shape[1] for f in features.values())
+
     def _create_backbone(self):
         """
         Creates the backbone network and optionally the Feature Pyramid Network (FPN).
@@ -38,7 +55,7 @@ class RobotDetectionBackbone(nn.Module):
 
             self.num_feature_maps = len(features)
             feature_channels = [feature.shape[1] for feature in features]
-            self.fpn = FeaturePyramidNetwork(feature_channels, out_channels=self.out_channels)
+            self.fpn = FeaturePyramidNetwork(feature_channels, out_channels=self.fpn_out_channels)
 
     def forward(self, x):
         """
