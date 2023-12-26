@@ -11,8 +11,6 @@ class Augmenter:
 
         self.__transform = A.Compose(
             [
-                A.RandomGamma(p=0.1),
-                A.CLAHE(p=0.2),
                 A.OneOf([
                     A.Resize(height, width, interpolation=0),
                     A.Resize(height, width, interpolation=1),
@@ -21,21 +19,24 @@ class Augmenter:
                     # A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=1),
                     # A.RandomSizedCrop(min_max_height=[self.height // 2, self.height], height=self.height, width=self.width, w2h_ratio=self.width/self.height, interpolation=2),
                 ], p=1),
-                A.ToGray(p=0.1),
+                A.ToGray(p=0.05),
                 A.SomeOf([
+                    A.RandomGamma(p=0.1),
+                    A.CLAHE(p=0.2),
                     A.RandomBrightnessContrast(),
                     A.HueSaturationValue(),
                     A.RGBShift(),
                     A.PixelDropout(dropout_prob=0.05, per_channel=True),
+                    A.ColorJitter(),
+                    A.RandomSunFlare(src_radius=100),
+                    # A.Blur(blur_limit=[5, 5]),
                     # A.ChannelShuffle(),
-                ], n=2, p=1),
+                ], n=3, p=0.6),
                 # A.OneOf([ # not implented for bbox
                 #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=0.0),
                 #     A.CoarseDropout(max_holes=16, max_height=height // 20, max_width=width // 20, fill_value=255),
                 # ], p=1),
                 A.HorizontalFlip(p=0.5),
-                A.Blur(blur_limit=[1, 3]),
-                A.RandomSunFlare(src_radius=100),
                 # A.Lambda(image=self.add_bright_spots, p=0.5),
                 A.RandomShadow(num_shadows_lower=3, num_shadows_upper=9, p=0.5),
                 A.GaussNoise(p=0.5, var_limit=50),
