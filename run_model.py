@@ -23,16 +23,17 @@ def main(args):
     model = ort.InferenceSession(args.onnx)
     input_layer = model.get_inputs()[0]
     output_layer = model.get_outputs()[0]
-    
+
     def onnx_run(input_values):
         return model.run([output_layer.name], {input_layer.name: input_values})
 
     make_measurement("onnxruntime", onnx_run, input_layer.shape, repeat=int(args.repeat))
 
 
-    ov_model = ov.convert_model(args.onnx)
+    ov_model = args.onnx # ov.convert_model(args.onnx)
     core = ov.Core()
     compiled_model = core.compile_model(model=ov_model, device_name="CPU")
+    input_layer = compiled_model.input(0)
     output_layer = compiled_model.output(0)
 
     def openvino_run(input_values):

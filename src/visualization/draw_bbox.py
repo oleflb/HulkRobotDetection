@@ -1,7 +1,7 @@
 from matplotlib.patches import Rectangle
 from torchvision.ops import nms
 
-CLASSES = ["Background", "Ball", "Robot", "Goal Post", "Penalty Spot"]
+CLASSES = ["Background", "Ball", "Robot", "Goal Post", "Penalty Spot", "LSpot", "TSpot", "XSpot"]
 
 
 def draw_bboxes_on_axis_from_prediction(
@@ -28,7 +28,7 @@ def draw_bboxes_on_axis_from_prediction(
         axis.text(xl, yu, f"{CLASSES[label]} - {score:.2f}")
 
 
-def draw_bboxes_on_axis_from_truth(axis, labels, height, width, color="green"):
+def draw_bboxes_on_axis_from_truth(axis, labels, color="green"):
     for bbox, label in zip(labels["boxes"], labels["labels"]):
         xl = int(bbox[0])
         yu = int(bbox[1])

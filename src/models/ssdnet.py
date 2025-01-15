@@ -25,11 +25,15 @@ class SSDNet(nn.Module):
         out_channels: int,
         backbone: str,
         pretrained_weights: bool,
-        use_fpn: bool,
+        feature_mode: str,
     ):
         super().__init__()
-        self.backbone = RobotDetectionBackbone(
-            backbone, pretrained_weights, use_fpn=use_fpn, out_channels=out_channels, image_size=image_size)
+        if backbone == "mobileone-s1":
+            self.backbone = mobileone(variant='s1')
+            self.backbone.num_feature_maps = 1
+        else:
+            self.backbone = RobotDetectionBackbone(
+                backbone, pretrained_weights, feature_mode=feature_mode, out_channels=out_channels, image_size=image_size)
 
         anchor_generator = DefaultBoxGenerator(aspect_ratios=(
             (0.4992, 0.9723, 1.8852),) * self.backbone.num_feature_maps)
@@ -48,10 +52,10 @@ class SSDNet(nn.Module):
 
     def reparameterize(self, image_shape) -> nn.Module:
         backbone = None
-        if isinstance(self.backbone, MobileOne):
-            backbone = reparameterize_model(self.ssd.backbone)
-        else:
-            backbone = copy.deepcopy(self.ssd.backbone)
+        backbone = copy.deepcopy(self.ssd.backbone)
+        for module in backbone.modules():
+            if hasattr(module, "reparameterize"):
+                module.reparameterize()
 
         return ReparameterizedSSDNet(
             image_shape=image_shape,

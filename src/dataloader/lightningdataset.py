@@ -41,21 +41,18 @@ class DataModule(LightningDataModule):
             augmenter = Augmenter(width=self.image_width,
                                   height=self.image_height)
             self.train_dataset = BBoxDataset(
-                (self.image_height, self.image_width),
                 self.train_data_directory,
                 augmenter.transform,
             )
             self.val_dataset = BBoxDataset(
-                (self.image_height, self.image_width),
                 self.val_data_directory,
-                augmenter.transform,
+                augmenter.test_transform,
             )
 
         if stage in ["test"]:
             augmenter = Augmenter(width=self.image_width,
                                   height=self.image_height)
             self.test_dataset = BBoxDataset(
-                (self.image_height, self.image_width),
                 self.test_data_directory,
                 augmenter.test_transform,
             )
@@ -64,7 +61,6 @@ class DataModule(LightningDataModule):
             augmenter = Augmenter(width=self.image_width,
                                   height=self.image_height)
             self.real_dataset = BBoxDataset(
-                (self.image_height, self.image_width),
                 self.real_data_directory,
                 augmenter.real_transform,
             )

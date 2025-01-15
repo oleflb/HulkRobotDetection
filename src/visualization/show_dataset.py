@@ -20,19 +20,22 @@ import torchvision.transforms as T
 import argparse
 
 def load_torch_model(args):
+    image_size = (480, 640)
     if args.ckpt:
         model = LightningWrapper.load_from_checkpoint(
-            args.ckpt, map_location=torch.device("cpu"), use_fpn=False
+            args.ckpt, map_location=torch.device("cpu"), feature_mode="last"
         )
         image_size = model.image_size
         model.eval()
     if args.reparameterize:
         model = model.model.reparameterize(image_size)
         model.eval()
+    if args.image_size:
+        image_size = eval(args.image_size)
     if args.ckpt:
         return model, image_size
     # use default image size
-    return None, (480, 640)
+    return None, image_size
 
 def load_yolo_model(args):
     if args.yolo:
@@ -59,8 +62,8 @@ def main(args):
 
         if isinstance(torch_model, ReparameterizedSSDNet):
             torch_detections = ReparameterizedSSDNet.parse_output(
-                bbox_regression=[detection["boxes"] for detection in torch_detections],
-                prediction_scores=[detection["scores"] for detection in torch_detections]
+                bbox_regression=torch.stack([detection["boxes"] for detection in torch_detections]),
+                prediction_scores=torch.stack([detection["scores"] for detection in torch_detections])
             )
             detections["torch"] = torch_detections
 
@@ -74,7 +77,7 @@ def main(args):
             ax.imshow(image)
             ax.set_title(labels[idx]["image_id"])
             
-            draw_bboxes_on_axis_from_truth(ax, labels[idx], image.height, image.width)
+            draw_bboxes_on_axis_from_truth(ax, labels[idx])
             if "torch" in detections:
                 draw_bboxes_on_axis_from_prediction(
                     ax, detections["torch"][idx], image.height, image.width
@@ -105,4 +108,5 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", help="a path to a .ckpt file that can be loaded with a LightningWrapper", default=None)
     parser.add_argument("--reparameterize", help="whether to reparameterize the lightning model", default=False)
     parser.add_argument("--batchsize", help="the batchsize", default=16)
+    parser.add_argument("--image_size", help="the image size to use", default=None)
     main(parser.parse_args())

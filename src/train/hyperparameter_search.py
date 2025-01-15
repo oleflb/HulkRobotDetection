@@ -14,11 +14,15 @@ from ..dataloader.lightningdataset import DataModule
 
 def compose_hyperparameters(trial: optuna.trial.Trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-8, 1e-1, log=True),
+        "pretrained_weights": trial.suggest_categorical("pretrained", [True, False]),
+        "feature_mode": "last",
+        "model_variant": trial.suggest_categorical("model_variant", ["mobileone_s0", "mobileone_s1", "mobilenetv3_small_100", "efficientnet_b0", "efficientnet_b1", "convnext_nano", "convnextv2_nano"]),
+        "image_width": trial.suggest_categorical("image_width", [160, 320, 640]),
+        "image_height": trial.suggest_categorical("image_height", [120, 240, 480]),
         # "swa_lrs": trial.suggest_float("swa_lrs", 1e-4, 1e-1),
-        "out_channels": trial.suggest_categorical("num_out_channels", [16, 32, 64, 128, 256, 512, 1024]),
-        "iou_threshold": trial.suggest_float("iou_threshold", 0.1, 0.9),
-        "conf_threshold": trial.suggest_float("conf_threshold", 0.1, 0.9),
+        # "out_channels": trial.suggest_categorical("num_out_channels", [16, 32, 64, 128, 256, 512, 1024]),
+        # "feature_mode": trial.suggest_categorical("feature_mode", ["last"]),
+        "initial_learning_rate": trial.suggest_float("initial_learning_rate", 1e-4, 1e-1, log=True),
     }
 
 GLOBAL_GPU_INDEX = 0
@@ -27,48 +31,48 @@ def objective(trial: optuna.trial.Trial):
     study_name = trial.study.study_name
     hyperparameters = compose_hyperparameters(trial)
         
-    BATCH_SIZE = 32
-    # image_size = (480, 640)
-    image_size = (480 // 4, 640 // 4)
+    BATCH_SIZE = 64
+    image_size = (hyperparameters["image_height"], hyperparameters["image_width"])
     num_classes = 1 + 4
     model = LightningWrapper(
         image_size,
         num_classes,
-        model="mobilenetv3",
+        model=hyperparameters["model_variant"],
         batch_size=BATCH_SIZE,
-        iou_threshold=hyperparameters["iou_threshold"],
-        conf_threshold=hyperparameters["conf_threshold"],
-        detections_per_img=50,
+        iou_threshold=0.5,
+        conf_threshold=0.2,
+        detections_per_img=500,
         learning_rate_reduction_factor=0.8,
-        out_channels=hyperparameters["out_channels"]
+        out_channels=1024,
+        initial_learning_rate=hyperparameters["initial_learning_rate"],
+        feature_mode="last", #hyperparameters["feature_mode"],
+        pretrained_weights=hyperparameters["pretrained_weights"],
     )
 
-    dataloader = DataModule(image_size, num_workers=28, batch_size=BATCH_SIZE)
-
-    logger = WandbLogger(project="detection")
+    dataloader = DataModule(image_size, num_workers=8, batch_size=BATCH_SIZE)
+    model = torch.compile(model)
+    
+    logger = WandbLogger(project=f"detection-{study_name}")
     trainer = Trainer(
         logger=logger,
+        devices=[GLOBAL_GPU_INDEX],
         max_epochs=400,
         callbacks=[
-            ModelCheckpoint(save_top_k=1, monitor="val/iou", mode="max"),
+            ModelCheckpoint(save_top_k=1, monitor="val/ma_f1", mode="max"),
             PyTorchLightningPruningCallback(
                    trial,
-                   monitor="val/iou"
+                   monitor="val/ma_f1"
             ),
+            EarlyStopping(monitor="val/ma_f1", patience=30, mode="max", min_delta=0.01),
             # StochasticWeightAveraging(swa_lrs=1e-2),
-            LearningRateMonitor(logging_interval='step')
+            LearningRateMonitor(logging_interval='epoch')
         ],
         fast_dev_run=False)
 
-    # Does not work in DDP
-    # tuner = Tuner(trainer)
-    # tuner.scale_batch_size(model, "binsearch")
-
     trainer.fit(model, dataloader)
 
-    iou = trainer.callback_metrics["val/iou"].item()
-    
-    return iou
+    f1 = trainer.callback_metrics["val/ma_f1"].item()
+    return f1
 
 
 if __name__ == "__main__":

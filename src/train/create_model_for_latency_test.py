@@ -5,21 +5,21 @@ import torch
 import sys
 
 BATCH_SIZE = 1
-image_size = (480 // 2, 640 // 2)
+image_size = (480 // 4, 640 // 4)
 num_classes = 1 + 4
 model = LightningWrapper(
     image_size,
     num_classes,
-    model="mobilenetv3",
+    model="mobileone_s1",
     batch_size=BATCH_SIZE,
     iou_threshold=0.5,
     conf_threshold=0.2,
     detections_per_img=50,
     learning_rate_reduction_factor=0.8,
-    out_channels=16,
+    out_channels=1024,
     initial_learning_rate=2e-3,
     pretrained_weights=False,
-    pixelunshuffle=2,
+    use_fpn=True,
 )
 
 image_size = model.image_size

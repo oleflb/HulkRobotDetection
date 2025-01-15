@@ -11,3 +11,5 @@ __pycache__/
 # openvino models
 *-ov.bin
 *-ov.xml
+.xml
+.bin

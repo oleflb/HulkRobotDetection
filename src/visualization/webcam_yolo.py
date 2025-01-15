@@ -11,12 +11,13 @@ from ultralytics import YOLO
 CLASSES = ["Background", "Ball", "Robot", "Goal Post", "Penalty Spot"]
 
 model = YOLO(sys.argv[1])
+image_size = (160, 224)
 
 transform = A.Compose([
-    A.Resize(96, 128, interpolation=1),
+    A.Resize(*image_size, interpolation=1),
     ToTensorV2(),
 ])
-sx, sy = (640 / 128, 480 / 96)
+sx, sy = (640 / image_size[1], 480 / image_size[0])
 # define a video capture object 
 vid = cv2.VideoCapture(0) 
 
@@ -35,7 +36,7 @@ while(True):
         score = box.conf.item()
         label = int(box.cls) + 1
 
-        if score < 0.1:
+        if score < 0.02:
             continue
         xyxy = torch.squeeze(box.xyxy)
         x0 = xyxy[0] * sx

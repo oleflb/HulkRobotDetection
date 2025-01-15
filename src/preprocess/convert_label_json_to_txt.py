@@ -6,7 +6,10 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-labels = ["Ball", "Robot", "GoalPost", "PenaltySpot"]
+labels = ["Ball", "Robot", "GoalPost", "PenaltySpot", "LSpot", "TSpot", "XSpot"]
+# export = ["Ball", "Robot", "GoalPost", "PenaltySpot"]
+export = ["Robot"]
+
 json_paths = glob.glob(path.join(sys.argv[1], "*.json"))
 
 
@@ -25,8 +28,12 @@ for json_path in tqdm(json_paths):
     txt_lines = []
     for bbox in json_object:
         points = np.array(bbox["points"]).flatten()
-        label = labels.index(bbox["class"])
-
+        if bbox["class"] not in labels:
+            raise ValueError(f"{bbox['class']} is invalid, available classes are {labels}")
+        if bbox["class"] not in export:
+            continue
+        label = export.index(bbox["class"])
+        
         cx, cy, w, h = convert_xyxy_to_cxcywh(points)
 
         txt_lines.append(f"{label} {cx} {cy} {w} {h}\n")

@@ -8,13 +8,16 @@ from torchvision.ops import box_convert
 from typing import Tuple
 import json
 
-JSON_LABELS = ["background", "ball", "robot", "goal_post", "pen_spot"]
+JSON_LABELS = ["background", "ball", "robot", "goal_post", "pen_spot", "l_spot", "t_spot", "x_spot"]
 CLASS_MAP = {
     0: 0, # background
     1: 1, # ball
     2: 2, # robot
     3: 3, # goal_post
     4: 4, # pen_spot
+    5: 5, # l_spot
+    6: 6, # t_spot
+    7: 7, # x_spot
 }
 
 def convert_image_path_to_label_path(image_path):
@@ -52,13 +55,12 @@ def load_labels(labels_path):
     return np.array(target_classes), np.array(target_bboxes)
 
 class BBoxDataset(torch.utils.data.Dataset):
-    def __init__(self, image_size: Tuple[int, int], txt_file: str, augmenter=None):
+    def __init__(self, txt_file: str, augmenter=None):
         self.augmenter = augmenter
         self.data_paths = list(
             (image_path.strip(), load_labels(convert_image_path_to_label_path(image_path.strip())))
             for image_path in open(txt_file).readlines()
         )
-        self.image_size = image_size
 
     def __len__(self):
         return len(self.data_paths)
@@ -73,8 +75,7 @@ class BBoxDataset(torch.utils.data.Dataset):
         assert np.all(target_bboxes > 0.0), target_bboxes
         assert np.all(target_bboxes <= 1.0), target_bboxes
 
-        height, width = self.image_size
-        image = Image.open(image_path).resize((width, height), resample=Image.Resampling.NEAREST).convert("RGB")
+        image = Image.open(image_path).convert("RGB")
         image = np.array(image, dtype=np.uint8)
 
         if self.augmenter:
@@ -89,6 +90,14 @@ class BBoxDataset(torch.utils.data.Dataset):
             target_classes = np.array(target_classes)
             target_bboxes = np.array(target_bboxes).reshape(-1, 4)
 
+        # image size might have changed from augmentation
+        if image.shape[0] == 3:
+            height, width = image.shape[1:3]
+        elif image.shape[2] == 3:
+            height, width = image.shape[:2] 
+        else:
+            raise ValueError(f"Image shape is {image.shape}")
+            
         # bbox format is normalized xyxy
         image = tv_tensors.Image(image / 255.0, dtype=torch.float32)
 

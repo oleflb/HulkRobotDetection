@@ -56,7 +56,8 @@ class DataList:
         label_name_txt = path.splitext(image_name)[0] + ".txt"
         label_path_txt = path.join(image_path, "..", "labels", label_name_txt)
         label_name_json = path.splitext(image_name)[0] + ".json"
-        label_path_json = path.join(image_path, "..", "labels", label_name_json)
+        label_path_json = path.join(
+            image_path, "..", "labels", label_name_json)
 
         return not path.exists(label_path_txt) and not path.exists(label_path_json)
 
@@ -81,7 +82,7 @@ class DataList:
 
             if negative_samples / len(current_list) <= rate:
                 continue
-            
+
             print(f"Rate: {negative_samples / len(current_list)}")
             positive_samples = len(current_list) - negative_samples
             target_negative_count = rate * positive_samples / (1 - rate)
@@ -109,7 +110,8 @@ class DataList:
         with open(path.join(at, "train.txt"), "w") as file:
             file.writelines(image + "\n" for image in self.train_image_paths)
         with open(path.join(at, "val.txt"), "w") as file:
-            file.writelines(image + "\n" for image in self.validation_image_paths)
+            file.writelines(
+                image + "\n" for image in self.validation_image_paths)
         with open(path.join(at, "test.txt"), "w") as file:
             file.writelines(image + "\n" for image in self.test_image_paths)
 
@@ -150,19 +152,26 @@ if __name__ == "__main__":
     default_split = Split(0.75, 0.2, 0.05)
     target_negative_example_rate = 0.15
     datafolders = [
-        (
-            "./datasets/SPLObjDetectDatasetV2/trainval/images/*.png",
-            Type.Train,
-            default_split,
-        ),
-        ("./datasets/2021-images-Devils/images/*.png", Type.TrainAndValidation, default_split),
-        ("datasets/2021-images/images/*.png", Type.TrainAndValidation, default_split),
-        (
-            "./datasets/SPLObjDetectDatasetV2/test/images/*.png",
-            Type.Test,
-            default_split,
-        ),
-        ("./datasets/coco/images/*.jpg", Type.All, Split(1/3, 1/3, 1/3)),
+        # (
+        #     "./datasets/2021-images-square/images/*.png",
+        #     Type.All,
+        #     default_split,
+        # ),
+        # (
+            # "./datasets/SPLObjDetectDatasetV2/trainval/images/*.png",
+            # Type.Train,
+            # default_split,
+        # ),
+        ("./datasets/2021-images-Devils/images/*.png",
+         Type.All, default_split),
+        # ("datasets/2021-images/images/*.png",
+         # Type.TrainAndValidation, default_split),
+        # (
+            # "./datasets/SPLObjDetectDatasetV2/test/images/*.png",
+            # Type.Test,
+            # default_split,
+        # ),
+        # ("./datasets/coco/images/*.jpg", Type.All, Split(1/3, 1/3, 1/3)),
     ]
     datalists = list(
         add_data(path, datatype, split) for (path, datatype, split) in datafolders

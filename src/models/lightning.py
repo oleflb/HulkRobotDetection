@@ -61,6 +61,12 @@ class LightningWrapper(LightningModule):
         self.feature_mode = feature_mode
 
         self.save_hyperparameters()
+    
+    def __reset_metrics(self):
+        self.iou_metric.reset()
+        self.map_metric.reset()
+        self.class_loss_metric.reset()
+        self.bbox_loss_metric.reset()
 
     def forward(self, images):
         return self.model(images)
@@ -82,11 +88,8 @@ class LightningWrapper(LightningModule):
 
         return bbox_loss + class_loss
 
-    def on_validation_start(self):
-        self.iou_metric.reset()
-        self.map_metric.reset()
-        self.class_loss_metric.reset()
-        self.bbox_loss_metric.reset()
+    def on_validation_epoch_start(self):
+        self.__reset_metrics()
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch
@@ -102,14 +105,14 @@ class LightningWrapper(LightningModule):
         self.class_loss_metric.update(loss["classification"])
 
     def on_validation_epoch_end(self):
-        iou_score = self.iou_metric.compute()
         map_score = self.map_metric.compute()
-        bbox_loss = self.bbox_loss_metric.compute()
-        class_loss = self.class_loss_metric.compute()
+        iou_score = self.iou_metric.compute()
+        bbox_loss = self.bbox_loss_metric.compute().to(device=self.device)
+        class_loss = self.class_loss_metric.compute().to(device=self.device)
 
-        map_v = map_score["map"] # .to(device=self.device)
-        mar_v = map_score["mar_100"] # .to(device=self.device)
-        iou = iou_score["iou"] # .to(device=self.device)
+        map_v = map_score["map"].to(device=self.device)
+        mar_v = map_score["mar_100"].to(device=self.device)
+        iou = iou_score["iou"].to(device=self.device)
 
         self.log_dict({
             "val/iou": iou,
@@ -119,7 +122,7 @@ class LightningWrapper(LightningModule):
             "val/class_loss": class_loss,
             "val/loss": bbox_loss + class_loss,
             "val/ma_f1": 2.0 * (map_v * mar_v) / (map_v + mar_v),
-        }, batch_size=self.batch_size)
+        }, batch_size=self.batch_size, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = optim.RMSprop(self.parameters(
